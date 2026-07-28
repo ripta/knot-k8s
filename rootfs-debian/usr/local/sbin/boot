@@ -1,0 +1,12 @@
+#!/bin/sh
+# PID 1: supervise /etc/knot/sv with runit.
+# On docker stop, take the services down cleanly before exiting.
+
+stop() {
+    sv -v -w 10 down /etc/knot/sv/*
+    exit 0
+}
+trap stop TERM INT
+
+runsvdir -P /etc/knot/sv &
+wait $!

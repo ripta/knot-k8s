@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# Execute the knot keys command with proper shell context
+exec /bin/sh -c '/usr/bin/knot keys -output authorized-keys \
+    -internal-api "http://${KNOT_SERVER_INTERNAL_LISTEN_ADDR:-localhost:5444}" \
+    -git-dir "${KNOT_REPO_SCAN_PATH:-/home/git/repositories}" \
+    -log-path "/tmp/knotguard.log"'

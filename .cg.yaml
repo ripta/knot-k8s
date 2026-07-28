@@ -1,0 +1,10 @@
+version: 1
+allow:
+  - prefix: [docker, exec]
+  - prefix: [docker, inspect]
+  - prefix: [docker, logs]
+  - prefix: [docker, rm]
+  - prefix: [docker, run]
+  - prefix: [docker, stop]
+  - prefix: [make]
+  - prefix: [mkdir]

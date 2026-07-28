@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+# Debian's sshd needs its privilege separation directory.
+mkdir -p /run/sshd /etc/ssh/keys
+
+for type in rsa ecdsa ed25519; do
+    key="/etc/ssh/keys/ssh_host_${type}_key"
+    [ -f "$key" ] || ssh-keygen -t "$type" -f "$key" -q -N ""
+done
+
+exec /usr/sbin/sshd -e -D
