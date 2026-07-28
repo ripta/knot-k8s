@@ -9,6 +9,7 @@ mkdir -p /run/knot
 {
     printf "KNOT_SERVER_INTERNAL_LISTEN_ADDR='%s'\n" "${KNOT_SERVER_INTERNAL_LISTEN_ADDR:-localhost:5444}"
     printf "KNOT_REPO_SCAN_PATH='%s'\n" "${KNOT_REPO_SCAN_PATH:-/home/git/repositories}"
+    printf "KNOT_SERVER_SECURE_MODE='%s'\n" "${KNOT_SERVER_SECURE_MODE:-false}"
 } > /run/knot/env
 
 stop() {

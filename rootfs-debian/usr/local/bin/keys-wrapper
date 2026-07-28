@@ -4,7 +4,12 @@
 # snapshotted to /run/knot/env by /usr/local/sbin/boot.
 [ -r /run/knot/env ] && . /run/knot/env
 
-exec /usr/bin/knot keys -output authorized-keys \
+# In secure mode the emitted authorized_keys forced command must carry
+# -secure-mode, which is what puts knot guard into sandboxed mode.
+set --
+[ "${KNOT_SERVER_SECURE_MODE:-false}" = "true" ] && set -- -secure-mode
+
+exec /usr/bin/knot keys -output authorized-keys "$@" \
     -internal-api "http://${KNOT_SERVER_INTERNAL_LISTEN_ADDR:-localhost:5444}" \
     -git-dir "${KNOT_REPO_SCAN_PATH:-/home/git/repositories}" \
     -log-path "/tmp/knotguard.log"
