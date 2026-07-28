@@ -2,6 +2,15 @@
 # PID 1: supervise /etc/knot/sv with runit.
 # On docker stop, take the services down cleanly before exiting.
 
+# sshd strips the environment before running AuthorizedKeysCommand, so
+# keys-wrapper cannot see container env vars. Snapshot the ones it
+# needs to a file it can source instead.
+mkdir -p /run/knot
+{
+    printf "KNOT_SERVER_INTERNAL_LISTEN_ADDR='%s'\n" "${KNOT_SERVER_INTERNAL_LISTEN_ADDR:-localhost:5444}"
+    printf "KNOT_REPO_SCAN_PATH='%s'\n" "${KNOT_REPO_SCAN_PATH:-/home/git/repositories}"
+} > /run/knot/env
+
 stop() {
     sv -v -w 10 down /etc/knot/sv/*
     exit 0

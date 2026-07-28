@@ -1,7 +1,10 @@
 #!/bin/sh
 
-# Execute the knot keys command with proper shell context
-exec /bin/sh -c '/usr/bin/knot keys -output authorized-keys \
+# sshd runs this with a minimal environment; the container env is
+# snapshotted to /run/knot/env by /usr/local/sbin/boot.
+[ -r /run/knot/env ] && . /run/knot/env
+
+exec /usr/bin/knot keys -output authorized-keys \
     -internal-api "http://${KNOT_SERVER_INTERNAL_LISTEN_ADDR:-localhost:5444}" \
     -git-dir "${KNOT_REPO_SCAN_PATH:-/home/git/repositories}" \
-    -log-path "/tmp/knotguard.log"'
+    -log-path "/tmp/knotguard.log"
