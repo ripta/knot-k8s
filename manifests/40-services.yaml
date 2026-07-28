@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: knot
+  namespace: knot
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: knot
+  ports:
+    - name: http
+      port: 5555
+      targetPort: http
+---
+# Separate Service so ingress-nginx can target it from the tcp-services map.
+# Kept ClusterIP: the controller's own LoadBalancer is what faces the internet.
+apiVersion: v1
+kind: Service
+metadata:
+  name: knot-ssh
+  namespace: knot
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: knot
+  ports:
+    - name: ssh
+      port: 22
+      targetPort: ssh

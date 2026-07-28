@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knot
+  namespace: knot
+data:
+  # Must be 0.0.0.0, not the 127.0.0.1 from the self-hosting guide. kube-proxy
+  # DNATs to the pod IP, so a loopback bind is unreachable from the Service.
+  # This matches the binary's own default, but set it explicitly.
+  KNOT_SERVER_LISTEN_ADDR: "0.0.0.0:5555"
+
+  # Stays on loopback. This API is unauthenticated. Never put it in a Service.
+  # sshd and the git hooks reach it from inside the same pod netns.
+  KNOT_SERVER_INTERNAL_LISTEN_ADDR: "127.0.0.1:5444"
+
+  # Both live on the 20Gi PVC mounted at /home/git.
+  KNOT_REPO_SCAN_PATH: "/home/git/repositories"
+  KNOT_SERVER_DB_PATH: "/home/git/knotserver.db"
+
+  # Must match the public DNS name and the TLS cert on the Ingress. The
+  # appview reaches this over HTTPS when you click verify.
+  KNOT_SERVER_HOSTNAME: "knot.example.com"
+  KNOT_SERVER_OWNER: "did:plc:REPLACEME"
+  APPVIEW_ENDPOINT: "https://tangled.org"
+
+  KNOT_SERVER_SECURE_MODE: "true"

@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: knot
+  namespace: knot
+  annotations:
+    # Default is 1m. Any git operation over HTTPS larger than that returns 413.
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    # Without these, nginx spools the whole pack to disk before sending a
+    # byte, which looks like a hang on large clones.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    # Covers long clones and the /events WebSocket. The default 60s read
+    # timeout is what kills the idle socket. ingress-nginx sets the
+    # Upgrade/Connection headers on its own, so no extra config is needed.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - knot.example.com
+      secretName: knot-tls
+  rules:
+    - host: knot.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: knot
+                port:
+                  name: http

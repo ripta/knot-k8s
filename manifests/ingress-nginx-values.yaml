@@ -1,0 +1,19 @@
+# Merge into your ingress-nginx Helm values.
+#
+# Port 22 has to come out of the same LoadBalancer IP as 443. Tangled clone
+# URLs are scp-style (git@knot.example.com:did:plc:.../repo) and that syntax
+# cannot carry a port, so SSH must answer on port 22 of the same hostname the
+# Ingress serves. A second Service type=LoadBalancer would get a second IP.
+#
+# The chart wires all of it: creates the tcp-services ConfigMap, sets
+# --tcp-services-configmap, adds the containerPort, and adds the port to the
+# controller Service.
+#
+# Do not append :PROXY. sshd does not speak PROXY protocol and will drop the
+# connection. For real client IPs use externalTrafficPolicy: Local instead.
+#
+# Check first: if your controller runs with hostNetwork or hostPort, binding
+# 22 collides with the node's own sshd and the controller will not start.
+
+tcp:
+  "22": "knot/knot-ssh:22"

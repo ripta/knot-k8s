@@ -1,0 +1,155 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: knot
+  namespace: knot
+spec:
+  serviceName: knot
+  # SQLite plus bare repos on local disk. There is no clustering. Never scale up.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: knot
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: knot
+    spec:
+      # The boot script traps TERM and runs `sv -w 10 down`. Give it room.
+      terminationGracePeriodSeconds: 60
+
+      securityContext:
+        # (4) Knot derives the shared "service group" by stat'ing the scan path
+        # directory. Without fsGroup a fresh PVC is root:root, so every repo
+        # gets chowned to group 0 and the git user loses access to all of them.
+        # 2357 is the git GID baked into the image.
+        fsGroup: 2357
+        # Avoids a recursive chown of the whole repo volume on every mount.
+        # The init container leaves the volume root at 2771, which still
+        # satisfies kubelet's root check, so this stays a no-op after setup.
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+
+      initContainers:
+        # Runs as root so the chowns work without relying on file caps.
+        - name: init-isolation
+          image: knot:v1.16.1-alpha
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+
+              # The image creates /home/git/repositories, but the PVC mount at
+              # /home/git hides it. Recreate it on the volume.
+              mkdir -p /home/git/repositories
+              chown 2357:2357 /home/git /home/git/repositories
+
+              # 2771 = setgid + owner rwx + group rwx + other x.
+              # The other-execute bit is what lets a sandboxed subprocess,
+              # running as a virtual UID with no supplementary groups,
+              # traverse down to its own repo. This replaces the
+              # `chmod o+x /home/git` step in the self-hosting guide.
+              # setgid makes new repo dirs inherit the git group.
+              chmod 2771 /home/git /home/git/repositories
+
+              # Idempotent. Exits cleanly with "no repos need migration" on a
+              # fresh install, and skips already-migrated repos on upgrades.
+              # Does not need the server running.
+              /usr/bin/knot migrate-isolation \
+                --git-dir /home/git/repositories \
+                --db /home/git/knotserver.db \
+                --internal-api 127.0.0.1:5444
+
+              # migrate-isolation creates the DB if absent, as root. Hand it
+              # back to git or the server cannot write to it.
+              for f in /home/git/knotserver.db \
+                       /home/git/knotserver.db-wal \
+                       /home/git/knotserver.db-shm; do
+                if [ -e "$f" ]; then chown 2357:2357 "$f"; fi
+              done
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: true
+            capabilities:
+              add: ["CHOWN", "SETUID", "SETGID"]
+          volumeMounts:
+            - name: data
+              mountPath: /home/git
+
+      containers:
+        - name: knot
+          image: knot:v1.16.1-alpha
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: knot
+          ports:
+            - name: http
+              containerPort: 5555
+            - name: ssh
+              containerPort: 22
+
+          securityContext:
+            # sshd needs root to bind 22 and to run AuthorizedKeysCommand as nobody.
+            runAsUser: 0
+            # (3) MUST stay true. Setting it false sets no_new_privs, and the
+            # kernel then ignores the file capabilities set by setcap in the
+            # Dockerfile. The knot server runs as the unprivileged git user and
+            # depends on those caps to setuid into virtual UIDs.
+            allowPrivilegeEscalation: true
+            # sshd writes /run/sshd, the keys command writes /tmp/knotguard.log.
+            readOnlyRootFilesystem: false
+            capabilities:
+              # These are in the containerd default set already. Listing them
+              # keeps the pod working under policies that drop caps, and all
+              # three are permitted by the baseline PodSecurity profile.
+              add: ["CHOWN", "SETUID", "SETGID"]
+
+          volumeMounts:
+            - name: data
+              mountPath: /home/git
+            - name: ssh-host-keys
+              mountPath: /etc/ssh/keys
+              readOnly: true
+
+          # Kubernetes ignores the Dockerfile HEALTHCHECK.
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+
+      volumes:
+        # Host keys live in a Secret, not on the PVC. They survive a volume
+        # rebuild, and they dodge the fsGroup chmod that would make sshd
+        # reject them as group-readable.
+        - name: ssh-host-keys
+          secret:
+            secretName: knot-sshd-host-keys
+            defaultMode: 0400
+
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+        # Uncomment and set if your default class is not block-backed.
+        # SQLite WAL is unreliable on NFS/EFS/CephFS.
+        # storageClassName: ""

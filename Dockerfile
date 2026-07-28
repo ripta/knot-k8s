@@ -22,7 +22,7 @@ arg GID=2357
 
 run apt-get update \
     && apt-get install -y --no-install-recommends \
-        bash ca-certificates curl git openssh-server openssl runit \
+        bash ca-certificates curl git libcap2-bin openssh-server openssl runit \
     && rm -rf /var/lib/apt/lists/*
 
 copy rootfs-debian /
@@ -36,6 +36,12 @@ run echo "git:$(openssl rand -hex 16)" | chpasswd
 run mkdir -p /home/git/repositories && chown -R git:git /home/git
 copy --from=builder /usr/bin/knot /usr/bin
 run mkdir /app && chown -R git:git /app
+
+# Secure mode drops git subprocesses to a per-owner virtual UID. The knot
+# server runs as the unprivileged git user, so it needs these caps on the
+# binary to call setuid/setgid/chown. Without them secure mode cannot start.
+# The security.capability xattr is preserved in the image layer.
+run setcap cap_setuid,cap_setgid,cap_chown+eip /usr/bin/knot
 
 healthcheck --interval=60s --timeout=30s --start-period=5s --retries=3 \
     cmd curl -f http://localhost:5555 || exit 1

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knot
+  labels:
+    # sshd binds port 22, needs /run/sshd for privilege separation, and runs
+    # AuthorizedKeysCommand as the nobody user. All three require root.
+    # The restricted profile forbids that, so baseline is the tightest we can go.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/audit: baseline
