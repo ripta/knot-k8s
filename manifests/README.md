@@ -44,14 +44,15 @@ The appview verifies the knot by reaching `KNOT_SERVER_HOSTNAME` over HTTPS.
 Ingress and certificate must be live first. Then hit verify on
 `/settings/knots`.
 
-## Still outstanding
+## How secure mode reaches SSH
 
-`KNOT_SERVER_SECURE_MODE=true` in the ConfigMap only reaches the server. The
-`knot keys` command needs its own `-secure-mode` flag, which makes it emit
-`-secure-mode` into the forced command in `authorized_keys`. That flag is what
-puts `knot guard` into sandboxed mode on the SSH side.
+`KNOT_SERVER_SECURE_MODE=true` in the ConfigMap has to reach two places, not
+one. The server picks it up from the environment. The SSH side does not.
 
-`usr/local/bin/keys-wrapper` does not pass it, and `usr/local/sbin/boot`
-snapshots only `KNOT_SERVER_INTERNAL_LISTEN_ADDR` and `KNOT_REPO_SCAN_PATH` to
-`/run/knot/env`. Until that is wired up, the server enforces isolation but git
-commands arriving over SSH run unsandboxed.
+`knot keys` needs its own `-secure-mode` flag. That flag makes it emit
+`-secure-mode` into the forced command in `authorized_keys`, which is what puts
+`knot guard` into sandboxed mode.
+
+`usr/local/sbin/boot` snapshots the setting to `/run/knot/env`, and
+`usr/local/bin/keys-wrapper` sources that file and passes the flag through. Set
+the ConfigMap value and both paths are covered.

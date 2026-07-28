@@ -13,7 +13,7 @@ expose 5555
 expose 22
 
 label org.opencontainers.image.description='knotserver'
-label org.opencontainers.image.source='https://tangled.org/ripta.i6y.me/knot-docker-debian'
+label org.opencontainers.image.source='https://tangled.org/ripta.i6y.me/knot-k8s'
 label org.opencontainers.image.url='https://tangled.org'
 label org.opencontainers.image.licenses='MIT'
 
