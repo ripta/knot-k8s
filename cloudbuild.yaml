@@ -1,0 +1,32 @@
+# GCB image build for knot. Triggers knot-k8s-pr and knot-k8s-main, us-central1.
+#
+# - The knot version is read from TAG in the Makefile, so it is set in one place.
+# - Only main pushes the knot:<version> tag, so a PR cannot move the tag the
+#   manifests pin.
+
+images:
+  - 'gcr.io/$PROJECT_ID/knot:commit-$SHORT_SHA'
+
+steps:
+  - id: Build
+    name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        KNOT_TAG=$$(sed -n 's/^TAG ?= //p' Makefile)
+        docker build \
+          --build-arg TAG=$$KNOT_TAG \
+          --label org.opencontainers.image.revision=$COMMIT_SHA \
+          --label net.r8y.build.id=$BUILD_ID \
+          --label net.r8y.build.trigger=$TRIGGER_NAME \
+          -t gcr.io/$PROJECT_ID/knot:commit-$SHORT_SHA \
+          -t gcr.io/$PROJECT_ID/knot:$$KNOT_TAG \
+          -f Dockerfile \
+          .
+        if [[ "$BRANCH_NAME" == "main" ]]; then
+          docker push gcr.io/$PROJECT_ID/knot:$$KNOT_TAG
+        fi
+
+timeout: 900s
