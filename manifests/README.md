@@ -16,8 +16,24 @@ into the container's writable layer, which is discarded on every restart.
 Every reschedule would change the host key and every user would get
 `REMOTE HOST IDENTIFICATION HAS CHANGED`.
 
-All three key types must be present. The run script generates any that are
-missing, and the Secret mount is read-only.
+All three key types must be present. The `init-host-keys` init container
+copies exactly those six files and fails if any is missing.
+
+The Secret is not mounted at `/etc/ssh/keys` directly. Kubernetes applies
+`fsGroup` to Secret volumes too, so the keys would end up mode 0440. sshd
+rejects group-readable host keys with `UNPROTECTED PRIVATE KEY FILE` and exits.
+The pod needs `fsGroup` for secure mode, so the init container copies the keys
+into an emptyDir as `root:root` with mode 0600 instead.
+
+With secure mode off, there is a simpler setup. Only use it with secure mode
+off, because secure mode relies on `fsGroup`. Drop `fsGroup` and mount the
+Secret at `/etc/ssh/keys` directly with `defaultMode: 0400`. sshd accepts the
+keys as mounted. Drop `init-isolation` too, since its steps are for secure
+mode. Replace it with a root init container (`runAsUser: 0`, `CHOWN` added)
+that gives the data volume to git:
+
+    mkdir -p /home/git/repositories
+    chown 2357:2357 /home/git /home/git/repositories
 
     ssh-keygen -q -N '' -C '' -t rsa -b 4096 -f ssh_host_rsa_key
     ssh-keygen -q -N '' -C '' -t ecdsa      -f ssh_host_ecdsa_key
@@ -43,6 +59,15 @@ upgrade the release.
 The appview verifies the knot by reaching `KNOT_SERVER_HOSTNAME` over HTTPS.
 Ingress and certificate must be live first. Then hit verify on
 `/settings/knots`.
+
+The appview calls `GET https://<hostname>/xrpc/sh.tangled.owner`. Check that
+it answers with your DID before you register:
+
+    curl -fsS https://knot.example.com/xrpc/sh.tangled.owner
+    # {"owner":"did:plc:..."}
+
+Verification may not be immediate. It can take several minutes before the
+appview calls this endpoint. The settings page updates only after that call succeeds.
 
 ## How secure mode reaches SSH
 

@@ -93,7 +93,9 @@ order.
 Three things there are easy to get wrong.
 
 - Host keys belong in a Secret, not on the PVC. Otherwise every reschedule
-  changes the host key.
+  changes the host key. The Secret cannot be mounted in place, because
+  `fsGroup` makes the keys group-readable and sshd refuses them. An init
+  container copies them out with mode 0600.
 - SSH must answer on port 22 of the same hostname as the Ingress. Tangled clone
   URLs are scp-style and cannot carry a port.
 - The namespace is `baseline`, not `restricted`. sshd needs root to bind 22 and
