@@ -25,11 +25,15 @@ rejects group-readable host keys with `UNPROTECTED PRIVATE KEY FILE` and exits.
 The pod needs `fsGroup` for secure mode, so the init container copies the keys
 into an emptyDir as `root:root` with mode 0600 instead.
 
-With secure mode off, there is a simpler option. Drop `fsGroup` and mount the
+With secure mode off, there is a simpler setup. Only use it with secure mode
+off, because secure mode relies on `fsGroup`. Drop `fsGroup` and mount the
 Secret at `/etc/ssh/keys` directly with `defaultMode: 0400`. sshd accepts the
-keys as mounted. The data volume still needs the git owner, and
-`init-isolation` already chowns it. Only do this with secure mode off, because
-secure mode relies on `fsGroup`.
+keys as mounted. Drop `init-isolation` too, since its steps are for secure
+mode. Replace it with a root init container (`runAsUser: 0`, `CHOWN` added)
+that gives the data volume to git:
+
+    mkdir -p /home/git/repositories
+    chown 2357:2357 /home/git /home/git/repositories
 
     ssh-keygen -q -N '' -C '' -t rsa -b 4096 -f ssh_host_rsa_key
     ssh-keygen -q -N '' -C '' -t ecdsa      -f ssh_host_ecdsa_key
