@@ -25,6 +25,12 @@ rejects group-readable host keys with `UNPROTECTED PRIVATE KEY FILE` and exits.
 The pod needs `fsGroup` for secure mode, so the init container copies the keys
 into an emptyDir as `root:root` with mode 0600 instead.
 
+With secure mode off, there is a simpler option. Drop `fsGroup` and mount the
+Secret at `/etc/ssh/keys` directly with `defaultMode: 0400`. sshd accepts the
+keys as mounted. The data volume still needs the git owner, and
+`init-isolation` already chowns it. Only do this with secure mode off, because
+secure mode relies on `fsGroup`.
+
     ssh-keygen -q -N '' -C '' -t rsa -b 4096 -f ssh_host_rsa_key
     ssh-keygen -q -N '' -C '' -t ecdsa      -f ssh_host_ecdsa_key
     ssh-keygen -q -N '' -C '' -t ed25519    -f ssh_host_ed25519_key
@@ -56,8 +62,8 @@ it answers with your DID before you register:
     curl -fsS https://knot.example.com/xrpc/sh.tangled.owner
     # {"owner":"did:plc:..."}
 
-Verification is not immediate. The first call can come several minutes after
-the knot starts. The settings page updates only after that call succeeds.
+Verification may not be immediate. It can take several minutes before the
+appview calls this endpoint. The settings page updates only after that call succeeds.
 
 ## How secure mode reaches SSH
 

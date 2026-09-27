@@ -152,6 +152,11 @@ spec:
           # Checks sshd as well as HTTP. Otherwise a dead sshd leaves the pod
           # Ready and nothing notices until a client tries to push. Each probe
           # makes sshd log a "Connection closed by 127.0.0.1" line.
+          # Both Services select this one pod. If sshd is down, HTTPS returns
+          # 503 too, including the appview's owner checks. This is deliberate.
+          # A knot without sshd cannot take pushes, and a loud failure beats a
+          # silent one. The alternative is an HTTP-only readiness probe plus an
+          # external TCP check on port 22.
           readinessProbe:
             exec:
               command:
