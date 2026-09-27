@@ -78,6 +78,34 @@ spec:
             - name: data
               mountPath: /home/git
 
+        # fsGroup also applies to Secret volumes, which leaves the keys at 0440
+        # and makes sshd reject them. Copy them into an emptyDir with explicit
+        # modes. fsGroup only touches the emptyDir at mount time, so these
+        # modes stick.
+        - name: init-host-keys
+          image: knot:v1.16.1-alpha
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              for type in rsa ecdsa ed25519; do
+                src="/etc/ssh/keys-src/ssh_host_${type}_key"
+                dst="/etc/ssh/keys/ssh_host_${type}_key"
+                install -o root -g root -m 0600 "$src" "$dst"
+                install -o root -g root -m 0644 "$src.pub" "$dst.pub"
+              done
+          securityContext:
+            runAsUser: 0
+            capabilities:
+              add: ["CHOWN"]
+          volumeMounts:
+            - name: ssh-host-keys-src
+              mountPath: /etc/ssh/keys-src
+              readOnly: true
+            - name: ssh-host-keys
+              mountPath: /etc/ssh/keys
+
       containers:
         - name: knot
           image: knot:v1.16.1-alpha
@@ -134,13 +162,18 @@ spec:
             failureThreshold: 3
 
       volumes:
-        # Host keys live in a Secret, not on the PVC. They survive a volume
-        # rebuild, and they dodge the fsGroup chmod that would make sshd
-        # reject them as group-readable.
-        - name: ssh-host-keys
+        # Host keys live in a Secret, not on the PVC, so they survive a volume
+        # rebuild. The Secret cannot be mounted at /etc/ssh/keys directly.
+        # fsGroup makes its files group-readable and sshd rejects them.
+        # init-host-keys copies them into the emptyDir below.
+        - name: ssh-host-keys-src
           secret:
             secretName: knot-sshd-host-keys
             defaultMode: 0400
+        - name: ssh-host-keys
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
 
   volumeClaimTemplates:
     - metadata:

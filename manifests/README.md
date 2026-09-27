@@ -16,8 +16,14 @@ into the container's writable layer, which is discarded on every restart.
 Every reschedule would change the host key and every user would get
 `REMOTE HOST IDENTIFICATION HAS CHANGED`.
 
-All three key types must be present. The run script generates any that are
-missing, and the Secret mount is read-only.
+All three key types must be present. The `init-host-keys` init container
+copies exactly those six files and fails if any is missing.
+
+The Secret is not mounted at `/etc/ssh/keys` directly. Kubernetes applies
+`fsGroup` to Secret volumes too, so the keys would end up mode 0440. sshd
+rejects group-readable host keys with `UNPROTECTED PRIVATE KEY FILE` and exits.
+The pod needs `fsGroup` for secure mode, so the init container copies the keys
+into an emptyDir as `root:root` with mode 0600 instead.
 
     ssh-keygen -q -N '' -C '' -t rsa -b 4096 -f ssh_host_rsa_key
     ssh-keygen -q -N '' -C '' -t ecdsa      -f ssh_host_ecdsa_key
