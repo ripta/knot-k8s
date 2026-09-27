@@ -50,6 +50,15 @@ The appview verifies the knot by reaching `KNOT_SERVER_HOSTNAME` over HTTPS.
 Ingress and certificate must be live first. Then hit verify on
 `/settings/knots`.
 
+The appview calls `GET https://<hostname>/xrpc/sh.tangled.owner`. Check that
+it answers with your DID before you register:
+
+    curl -fsS https://knot.example.com/xrpc/sh.tangled.owner
+    # {"owner":"did:plc:..."}
+
+Verification is not immediate. The first call can come several minutes after
+the knot starts. The settings page updates only after that call succeeds.
+
 ## How secure mode reaches SSH
 
 `KNOT_SERVER_SECURE_MODE=true` in the ConfigMap has to reach two places, not
