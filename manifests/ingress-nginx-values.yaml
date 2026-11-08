@@ -9,11 +9,25 @@
 # --tcp-services-configmap, adds the containerPort, and adds the port to the
 # controller Service.
 #
-# Do not append :PROXY. sshd does not speak PROXY protocol and will drop the
-# connection. For real client IPs use externalTrafficPolicy: Local instead.
-#
 # Check first: if your controller runs with hostNetwork or hostPort, binding
 # 22 collides with the node's own sshd and the controller will not start.
 
 tcp:
   "22": "knot/knot-ssh:22"
+
+  # With PROXY protocol, the knot sees each SSH client's real address instead
+  # of the controller pod's. It limits concurrent SSH operations per address,
+  # 4 by default, so without this all users share those 4.
+  #
+  # The empty third field leaves the listening side alone. The fourth field
+  # makes nginx send a PROXY v1 header to the knot.
+  #
+  # Order matters. Set KNOT_SSH_PROXY_PROTOCOL_FROM on the knot first and roll
+  # it out. The knot accepts connections without the header from those
+  # addresses too. Only then switch this line. The other order breaks SSH,
+  # because the knot reads the header as a bad SSH banner.
+  #
+  # nginx only knows the real client address when the controller Service has
+  # externalTrafficPolicy: Local. Otherwise it sees a node IP.
+  #
+  # "22": "knot/knot-ssh:22::PROXY"

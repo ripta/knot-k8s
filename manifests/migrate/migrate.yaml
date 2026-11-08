@@ -1,0 +1,117 @@
+# The real Go-to-Rust knot migration. Run it only with the knot StatefulSet
+# scaled to 0. See manifests/README.md, "Migrating from the Go knot".
+#
+#   kubectl apply -f manifests/migrate/migrate.yaml
+#   kubectl -n knot logs -f job/knot-migrate
+#
+# In copy mode, the default, the Go knot's database and repos are left as they
+# were. The Rust knot's state goes to /data/knot2 on the same PVC, so the
+# volume needs room for a second copy of every repo. The rehearsal reports it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: knot-migrate
+  namespace: knot
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+
+      # A guard. This Job must not run while any knot pod is up. With RWO, the
+      # anti-affinity keeps it off knot-0's node, and the volume cannot attach
+      # anywhere else. The pod stays Pending until knot-0 is gone.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: knot
+              topologyKey: kubernetes.io/hostname
+
+      # Root, so it can read repo trees that secure mode gave per-owner UIDs,
+      # and the host key at mode 0400. Allowed by the baseline profile.
+      securityContext:
+        runAsUser: 0
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: knot-migrate
+          image: knot:v1.20.0
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+
+              # Step 2 of the upstream guide. The Go knot is stopped, so a
+              # plain copy of the db and any leftover WAL is consistent.
+              # knot-migrate never writes the source db. This copy is for
+              # everything else that can go wrong.
+              for f in knotserver.db knotserver.db-wal knotserver.db-shm; do
+                if [ -e "/data/$f" ]; then
+                  cp -p "/data/$f" "/data/knotserver-cutover.${f#knotserver.}"
+                fi
+              done
+
+              # Not under set -e. knot-migrate exits non-zero when it skipped
+              # repos, but only after writing the target. The chowns below
+              # must run either way.
+              rc=0
+              /usr/bin/knot-migrate \
+                --source-db /data/knotserver.db \
+                --source-repos /data/repositories \
+                --host-key /etc/ssh/keys/ssh_host_ed25519_key \
+                --hostname "$KNOT_HOSTNAME" \
+                --plc-url "$KNOT_PLC_DIRECTORY" \
+                --contact-email "$KNOT_CONTACT_EMAIL" \
+                --object-format "$KNOT_GIT_OBJECT_FORMAT" \
+                --target /data/knot2 || rc=$?
+
+              # Root wrote all of it. Hand it to the knot user.
+              if [ -d /data/knot2 ]; then chown -R 2357:2357 /data/knot2; fi
+
+              # Reading the db as root may have created -wal and -shm owned by
+              # root. Give them back to the Go knot's git user, also 2357, so a
+              # rollback can open its database.
+              for f in /data/knotserver.db-wal /data/knotserver.db-shm; do
+                if [ -e "$f" ]; then chown 2357:2357 "$f"; fi
+              done
+
+              if [ "$rc" -ne 0 ]; then
+                echo "knot-migrate exited $rc. Read the report above before going on."
+                exit "$rc"
+              fi
+              echo "migration done. Copy /data/knot2/repo-signing-keys.json off the cluster."
+          env:
+            - name: KNOT_HOSTNAME
+              valueFrom:
+                configMapKeyRef: {name: knot-server, key: KNOT_HOSTNAME}
+            - name: KNOT_PLC_DIRECTORY
+              valueFrom:
+                configMapKeyRef: {name: knot-server, key: KNOT_PLC_DIRECTORY}
+            - name: KNOT_CONTACT_EMAIL
+              valueFrom:
+                configMapKeyRef: {name: knot-server, key: KNOT_CONTACT_EMAIL}
+            - name: KNOT_GIT_OBJECT_FORMAT
+              valueFrom:
+                configMapKeyRef: {name: knot-server, key: KNOT_GIT_OBJECT_FORMAT}
+          envFrom:
+            - secretRef:
+                name: knot-master-key
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: ssh-host-keys
+              mountPath: /etc/ssh/keys
+              readOnly: true
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: data-knot-0
+        - name: ssh-host-keys
+          secret:
+            secretName: knot-sshd-host-keys
+            defaultMode: 0400
