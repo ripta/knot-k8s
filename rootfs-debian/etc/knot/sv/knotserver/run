@@ -1,3 +1,0 @@
-#!/bin/sh
-
-exec chpst -u git /usr/bin/knot server

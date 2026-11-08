@@ -3,6 +3,8 @@
 # - The knot version is read from TAG in the Makefile, so it is set in one place.
 # - Only main pushes the knot:<version> tag, so a PR cannot move the tag the
 #   manifests pin.
+# - The knot is a Rust release build of a large workspace. The timeout is
+#   sized for that on the default machine, not measured. Tune it after a run.
 
 images:
   - 'gcr.io/$PROJECT_ID/knot:commit-$SHORT_SHA'
@@ -29,4 +31,4 @@ steps:
           docker push gcr.io/$PROJECT_ID/knot:$$KNOT_TAG
         fi
 
-timeout: 900s
+timeout: 3600s

@@ -3,10 +3,15 @@ kind: Namespace
 metadata:
   name: knot
   labels:
-    # sshd binds port 22, needs /run/sshd for privilege separation, and runs
-    # AuthorizedKeysCommand as the nobody user. All three require root.
-    # The restricted profile forbids that, so baseline is the tightest we can go.
+    # The knot pod itself meets the restricted profile. It runs as non-root,
+    # drops all capabilities, and binds no port below 1024.
+    #
+    # The migration Jobs do not. They run as root, because a Go knot in secure
+    # mode left each repo tree owned by a per-owner UID that only root can
+    # read. The Go knot's own pod needs baseline too, for rollback.
+    #
+    # Once the migration is settled, switch all four labels to restricted.
     pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: baseline
-    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

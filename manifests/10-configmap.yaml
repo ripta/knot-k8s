@@ -1,26 +1,59 @@
+# Named knot-server, not knot. The Go knot's ConfigMap is still called knot
+# and stays in place until the migration is settled. See golang/.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: knot
+  name: knot-server
   namespace: knot
 data:
-  # Must be 0.0.0.0, not the 127.0.0.1 from the self-hosting guide. kube-proxy
-  # DNATs to the pod IP, so a loopback bind is unreachable from the Service.
-  # This matches the binary's own default, but set it explicitly.
-  KNOT_SERVER_LISTEN_ADDR: "0.0.0.0:5555"
+  # Must match the public DNS name and the TLS cert on the Ingress. The knot's
+  # identity is did:web:<hostname>, so a migrated knot keeps the old hostname.
+  KNOT_HOSTNAME: "knot.example.com"
+  # Comma-separated DIDs. The first one is the knot owner.
+  KNOT_ADMINS: "did:plc:REPLACEME"
+  # Required. Served by org.tangled.knot.describeKnot.
+  KNOT_CONTACT_EMAIL: "ops@example.com"
+  KNOT_PLC_DIRECTORY: "https://plc.directory"
+  # Only used to build links in push messages.
+  KNOT_APPVIEW_ENDPOINT: "https://tangled.org"
 
-  # Stays on loopback. This API is unauthenticated. Never put it in a Service.
-  # sshd and the git hooks reach it from inside the same pod netns.
-  KNOT_SERVER_INTERNAL_LISTEN_ADDR: "127.0.0.1:5444"
+  # The knot's default is sha256. A sha256 repo cannot exchange objects with a
+  # sha1 one, and knot-migrate defaults to sha1 to match existing repos. Keep
+  # this in step with the --object-format given to the migration.
+  KNOT_GIT_OBJECT_FORMAT: "sha1"
 
-  # Both live on the 20Gi PVC mounted at /home/git.
-  KNOT_REPO_SCAN_PATH: "/home/git/repositories"
-  KNOT_SERVER_DB_PATH: "/home/git/knotserver.db"
+  # 0.0.0.0, not [::]. kube-proxy DNATs to the pod IP, so a loopback bind is
+  # unreachable. A [::] bind fails outright on nodes with IPv6 disabled.
+  KNOT_LISTEN_ADDR: "0.0.0.0:5555"
+  # The knot serves SSH itself. 2222 needs no capability. The knot-ssh Service
+  # maps port 22 onto it.
+  KNOT_SSH_LISTEN_ADDR: "0.0.0.0:2222"
 
-  # Must match the public DNS name and the TLS cert on the Ingress. The
-  # appview reaches this over HTTPS when you click verify.
-  KNOT_SERVER_HOSTNAME: "knot.example.com"
-  KNOT_SERVER_OWNER: "did:plc:REPLACEME"
-  APPVIEW_ENDPOINT: "https://tangled.org"
+  # All on the PVC mounted at /data. knot-migrate writes them under /data/knot2,
+  # beside the Go knot's data, which stays for rollback. The knot refuses to
+  # start unless the repo and LFS dirs exist. The init container creates them.
+  KNOT_SCAN_PATH: "/data/knot2/repos"
+  KNOT_LFS_STORE_PATH: "/data/knot2/lfs"
+  KNOT_SEALED_KEY_FILE: "/data/knot2/sealed-keys"
+  # Not on the PVC. init-host-key copies it out of a Secret at mode 0600.
+  KNOT_SSH_HOST_KEY_FILE: "/etc/knot/ssh/ssh_host_key"
+  # The name of the variable that holds the key, not the key itself. The value
+  # comes from the knot-master-key Secret.
+  KNOT_MASTER_KEY_ENV: "KNOT_MASTER_KEY"
 
-  KNOT_SERVER_SECURE_MODE: "true"
+  # Migrated knots only, set for one start once the migration is verified.
+  # The knot seals every migrated repo's signing key into sealed-keys on
+  # start. It needs those keys to move each repo's did:plc onto its own key.
+  # After that, rolling back to the Go knot is no longer clean. Unset it once
+  # the log says "sealed migrated per-repo signing keys". The knot fails to
+  # start if this names a file that is gone.
+  # See README.md, "Commit to the Rust knot".
+  # KNOT_REPO_SIGNING_KEYS: "/data/knot2/repo-signing-keys.json"
+
+  # ingress-nginx fronts both listeners, so every client arrives from a
+  # controller pod IP. Without these, all users share one HTTP rate limit and
+  # one SSH concurrency limit. Set the CIDR to your controller pods' range.
+  # See README.md, "Client addresses behind ingress-nginx".
+  # KNOT_XRPC_TRUSTED_PROXY_HEADER: "x-forwarded-for"
+  # KNOT_XRPC_TRUSTED_PROXIES: "10.244.0.0/16"
+  # KNOT_SSH_PROXY_PROTOCOL_FROM: "10.244.0.0/16"

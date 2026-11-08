@@ -1,4 +1,4 @@
-TAG ?= v1.16.1-alpha
+TAG ?= v1.20.0
 IMAGE ?= knot
 
 .PHONY: help build

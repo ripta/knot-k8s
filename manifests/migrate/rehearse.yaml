@@ -1,0 +1,87 @@
+# Dress rehearsal for the Go-to-Rust knot migration. Runs knot-migrate with
+# --dry-run while the Go knot keeps serving. It writes nothing to the target.
+# Run it as often as you like:
+#
+#   kubectl -n knot delete job knot-migrate-rehearse --ignore-not-found
+#   kubectl apply -f manifests/migrate/rehearse.yaml
+#   kubectl -n knot logs -f job/knot-migrate-rehearse
+#
+# Needs the knot-server ConfigMap and the knot-master-key Secret first.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: knot-migrate-rehearse
+  namespace: knot
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+
+      # The PVC is ReadWriteOnce and the Go knot has it mounted. RWO allows a
+      # second pod on the same node only, so pin this pod next to knot-0.
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: knot
+              topologyKey: kubernetes.io/hostname
+
+      # Root, so it can read repo trees that secure mode gave per-owner UIDs,
+      # and the host key at mode 0400. Allowed by the baseline profile.
+      securityContext:
+        runAsUser: 0
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: knot-migrate
+          image: knot:v1.20.0
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              exec /usr/bin/knot-migrate \
+                --source-db /data/knotserver.db \
+                --source-repos /data/repositories \
+                --host-key /etc/ssh/keys/ssh_host_ed25519_key \
+                --hostname "$KNOT_HOSTNAME" \
+                --plc-url "$KNOT_PLC_DIRECTORY" \
+                --contact-email "$KNOT_CONTACT_EMAIL" \
+                --object-format "$KNOT_GIT_OBJECT_FORMAT" \
+                --target /data/knot2 \
+                --dry-run
+          env:
+            - name: KNOT_HOSTNAME
+              valueFrom:
+                configMapKeyRef: {name: knot-server, key: KNOT_HOSTNAME}
+            - name: KNOT_PLC_DIRECTORY
+              valueFrom:
+                configMapKeyRef: {name: knot-server, key: KNOT_PLC_DIRECTORY}
+            - name: KNOT_CONTACT_EMAIL
+              valueFrom:
+                configMapKeyRef: {name: knot-server, key: KNOT_CONTACT_EMAIL}
+            - name: KNOT_GIT_OBJECT_FORMAT
+              valueFrom:
+                configMapKeyRef: {name: knot-server, key: KNOT_GIT_OBJECT_FORMAT}
+          envFrom:
+            - secretRef:
+                name: knot-master-key
+          volumeMounts:
+            # Writable on purpose. SQLite needs to create the -shm index file
+            # beside a WAL database even to read it.
+            - name: data
+              mountPath: /data
+            - name: ssh-host-keys
+              mountPath: /etc/ssh/keys
+              readOnly: true
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: data-knot-0
+        - name: ssh-host-keys
+          secret:
+            secretName: knot-sshd-host-keys
+            defaultMode: 0400

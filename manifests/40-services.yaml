@@ -14,6 +14,9 @@ spec:
 ---
 # Separate Service so ingress-nginx can target it from the tcp-services map.
 # Kept ClusterIP: the controller's own LoadBalancer is what faces the internet.
+#
+# Port 22 maps to the container port named ssh. That is 2222 on the knot and
+# was 22 on the Go knot's sshd, so this Service serves either one unchanged.
 apiVersion: v1
 kind: Service
 metadata:
